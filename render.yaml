@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: disha-ai
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: "pip install -r requirements.txt && python init_db.py"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: openai
+      - key: DATABASE_URL
+        value: sqlite:///./disha_ai.db
+      - key: ENVIRONMENT
+        value: production
+      - key: MAX_CONTEXT_TOKENS
+        value: 8000
+      - key: MAX_RESPONSE_TOKENS
+        value: 1000
