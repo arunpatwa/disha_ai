@@ -7,8 +7,8 @@ from typing import Optional
 class Settings(BaseSettings):
     """App config - everything loaded from .env file"""
     
-    # Database - switched to SQLite for easier setup
-    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/disha_ai"
+    # Database - using SQLite by default (works everywhere, no setup needed)
+    DATABASE_URL: str = "sqlite:///./disha_ai.db"
     
     # Redis - not using yet but might need for caching later
     REDIS_URL: Optional[str] = None
