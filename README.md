@@ -2,336 +2,162 @@
 
 India's first AI health coach with persistent memory and protocol-driven conversations.
 
-## Quick Start
+**Live Demo**: [https://disha-ai-rg86.onrender.com](https://disha-ai-rg86.onrender.com/)
 
-### 1. Prerequisites
+## Running Locally
+
+### Prerequisites
 - Python 3.8+
-- OpenAI API Key (recommended) or Anthropic API Key
+- OpenAI API Key or Anthropic API Key
 
-### 2. Installation
+### Setup Steps
 
 ```bash
-# Clone and navigate to project
-cd disha_ai
-
-# Create virtual environment
+# 1. Install dependencies
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-### 3. Configure Environment Variables
-
-```bash
-# Copy example env file
+# 2. Configure environment
 cp .env.example .env
+# Edit .env and add your OPENAI_API_KEY
 
-# Edit .env and add your API key
-nano .env  # or use your preferred editor
+# 3. Initialize database
+python init_db.py  # Creates tables + seeds 5 medical protocols
+
+# 4. Run server
+python main.py  # http://localhost:8000
 ```
 
-Required configuration in `.env`:
+### Environment Variables
+
 ```env
-# Database
-DATABASE_URL=sqlite:///./disha_ai.db
-
-# LLM Provider (openai, anthropic, or demo)
-LLM_PROVIDER=openai
-
-# API Keys (add at least one based on LLM_PROVIDER)
-OPENAI_API_KEY=your-openai-key-here
-ANTHROPIC_API_KEY=your-anthropic-key-here
-
-# Server
-PORT=8000
+OPENAI_API_KEY=sk-...           # Required: Your OpenAI API key
+LLM_PROVIDER=openai             # Options: openai, anthropic, demo
+DATABASE_URL=sqlite:///./disha_ai.db  # SQLite by default
 ```
 
-### 4. Set Up Database
+## Architecture
 
-```bash
-# Initialize database and seed default protocols
-python init_db.py
-```
-
-This creates:
-- SQLite database with 5 tables (users, messages, memories, protocols, typing_indicators)
-- Seeds 5 default medical protocols (Emergency, Fever, Headache, Stomach Pain, Refund)
-
-### 5. Run the Application
-
-```bash
-# Start the server
-python main.py
-
-# Server will run at http://localhost:8000
-```
-
-Open http://localhost:8000 in your browser to start chatting with Disha!
-
-## Deployment (Get a Public URL!)
-
-### Quick Deploy to Render (Free)
-
-1. **Push to GitHub**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin YOUR_GITHUB_REPO_URL
-   git push -u origin main
-   ```
-
-2. **Deploy on Render**
-   - Go to [render.com](https://render.com) and sign up
-   - Click "New +" → "Web Service"
-   - Connect your GitHub repo
-   - Render auto-detects `render.yaml`
-   - Add your `OPENAI_API_KEY` in environment variables
-   - Click "Create Web Service"
-
-3. **Your app will be live!** 🎉
-   - URL: `https://disha-ai-XXXX.onrender.com`
-   - Check [DEPLOYMENT.md](DEPLOYMENT.md) for full guide
-
-**Other Options**: Railway, Fly.io, Heroku - see [DEPLOYMENT.md](DEPLOYMENT.md) for details
-
-## Architecture Overview
-
-### Backend Structure
-
-The application follows a **layered architecture** with clear separation of concerns:
+### Backend Structure (Layered)
 
 ```
-┌─────────────────────────────────────┐
-│   main.py (API Routes/Endpoints)    │
-├─────────────────────────────────────┤
-│   services.py (Business Logic)      │
-├─────────────────────────────────────┤
-│   llm_service.py (LLM Abstraction)  │
-├─────────────────────────────────────┤
-│   models.py (Database Models)       │
-├─────────────────────────────────────┤
-│   database.py (DB Connection)       │
-└─────────────────────────────────────┘
+main.py          → API routes (FastAPI endpoints)
+services.py      → Business logic (UserService, ChatService, MemoryService, etc.)
+llm_service.py   → LLM abstraction (OpenAI/Anthropic/Demo)
+models.py        → Database models (SQLAlchemy ORM)
+database.py      → DB connection + session management
 ```
-
-#### Layers
-
-1. **API Layer** (`main.py`)
-   - FastAPI routes and endpoint definitions
-   - Request/response validation with Pydantic schemas
-   - Dependency injection for database sessions
-
-2. **Service Layer** (`services.py`)
-   - Business logic for all features
-   - Services: UserService, MessageService, MemoryService, ProtocolService, ChatService, TypingService
-   - Orchestrates between API and data layers
-
-3. **LLM Layer** (`llm_service.py`)
-   - Multi-provider support (OpenAI, Anthropic, Demo mode)
-   - Context window management with token counting
-   - Smart message truncation to stay within limits
-   - Memory extraction from conversations
-
-4. **Data Layer** (`models.py` + `database.py`)
-   - SQLAlchemy ORM models
-   - Database session management
-   - Schema definitions with proper indexes
-
-5. **Validation Layer** (`schemas.py`)
-   - Pydantic models for type safety
-   - Request/response validation
-   - Data serialization
 
 ### Key Design Decisions
 
-#### 1. SQLite Instead of PostgreSQL
-- **Why**: Easier local setup, no separate database server needed
-- **Trade-off**: Less suitable for production scale, but perfect for demo/development
-
-#### 2. Context Window Management
-- Implements smart truncation to stay within LLM token limits
-- Keeps recent messages + system prompt (with user profile, memories, protocols)
+**1. Smart Context Management**
+- Truncates conversation to fit 8K token limit
+- Keeps recent messages + system prompt with user profile/memories/protocols
 - Uses tiktoken for accurate token counting
 
-#### 3. Long-Term Memory System
-- Automatically extracts key health information every 5 messages
-- Stores as structured key-value pairs with importance ratings
-- Retrieved and injected into system prompt for context
+**2. Long-Term Memory System**
+- LLM extracts key health facts every 5 messages
+- Stores as category/key/value with importance (1-5)
+- Only high-importance memories (≥3) injected into context
 
-#### 4. Protocol-Based Responses
-- Pre-defined medical protocols for common scenarios
-- Keyword matching triggers appropriate protocol responses
+**3. Medical Protocol System**
+- Pre-defined protocols for common scenarios (fever, emergency, etc.)
+- Keyword matching triggers protocol responses
 - Ensures consistent, safe medical guidance
 
-#### 5. Cursor-Based Pagination
+**4. Cursor-Based Pagination**
 - Uses message IDs as cursors for infinite scroll
-- More efficient than offset pagination for large datasets
-- Prevents duplicate messages during real-time updates
+- More efficient than offset-based for large datasets
 
-#### 6. Multi-Provider LLM Support
-- Abstract interface supports OpenAI, Anthropic, or Demo mode
-- Easy to switch providers via environment variable
-- Demo mode for testing without API costs
+**5. Multi-Provider LLM**
+- Abstraction supports OpenAI, Anthropic, Demo mode
+- Easy switching via `LLM_PROVIDER` env var
 
-## LLM Configuration
+## LLM Integration
 
-### Providers
-
-**Primary: OpenAI GPT-4o-mini**
-- Fast, cost-effective, good for conversational AI
-- Configuration: max_tokens=1000, temperature=0.7
-
-**Alternative: Anthropic Claude 3.5 Sonnet**
-- More nuanced medical reasoning
-- Configuration: max_tokens=1000, temperature=0.7
-
-**Fallback: Demo Mode**
-- Pattern-matched responses for testing
-- No API key required
+### Provider: OpenAI GPT-4o-mini
+- **Model**: `gpt-4o-mini`
+- **Config**: max_tokens=1000, temperature=0.7
+- **Why**: Fast, cost-effective, good for conversational AI
 
 ### Prompting Strategy
 
-#### Multi-Stage System Prompts
+**Two-Stage Approach:**
 
-1. **Onboarding Stage** (when `onboarding_completed=False`)
-```
-You are Disha, India's first AI health coach. You're warm, empathetic...
-The user is new. Naturally gather: name, age, gender, weight, height,
-medical conditions, medications, allergies.
-Don't interrogate - make it conversational...
-```
+1. **Onboarding Mode** (new users)
+   - Warm, conversational tone
+   - Naturally gathers: age, gender, weight, height, conditions, medications, allergies
+   - One question at a time, non-interrogative
 
-2. **Regular Conversation** (after onboarding)
+2. **Regular Mode** (after onboarding)
+   - Injects user profile + relevant memories + matching protocols
+   - Maintains context across conversations
+   - WhatsApp-like brevity (2-3 sentences)
+
+**System Prompt Structure:**
 ```
 You are Disha, India's first AI health coach...
 
 USER PROFILE:
-- Name: John, Age: 30, Gender: male
-- Weight: 75kg, Height: 180cm
-- Medical Conditions: asthma
-- Current Medications: albuterol
-- Allergies: peanuts
+- Age: 30, Gender: male, Weight: 75kg, Height: 180cm
+- Conditions: asthma | Medications: albuterol | Allergies: peanuts
 
-RELEVANT MEMORIES:
+MEMORIES (top 5 by importance):
 - User prefers morning workouts
 - Had flu last month
-...
 
-ACTIVE PROTOCOLS:
-[Fever Management Protocol]
-Keywords: fever, temperature, hot
-Response: Ask duration, measure temperature...
-...
+ACTIVE PROTOCOLS (matched by keywords):
+[Emergency Protocol]: If chest pain/breathing issues → call 102/108
+[Fever Protocol]: Rest, hydration, paracetamol if needed
 ```
 
-#### Context Management
-- **Token Limits**: 8000 tokens for context, 1000 for response
-- **Truncation Strategy**: Keep most recent messages + full system prompt
-- **Memory Integration**: Only inject relevant memories (importance ≥ 3)
-- **Protocol Matching**: Include protocols matching message keywords
+**Memory Extraction** (every 5 messages):
+- LLM analyzes conversation for key health facts
+- Returns JSON: `[{category, key, value, importance}]`
+- Categories: health_goal, preference, medical_history, lifestyle
 
-#### Memory Extraction
-Every 5 messages, asks LLM to extract key information:
-```
-Extract health-related memories from conversation:
-- Medical conditions mentioned
-- Lifestyle preferences
-- Symptoms reported
-- Treatment responses
-...
-Return as JSON array with category, key, value, importance.
-```
+**Context Window Management:**
+- Limit: 8000 tokens (context) + 1000 tokens (response)
+- Strategy: Keep recent messages, drop older ones if needed
+- Always preserve full system prompt with profile/memories/protocols
 
-## API Endpoints
+## Trade-offs & Future Improvements
 
-### Core Endpoints
+### Key Trade-offs Made
 
-- `POST /api/chat` - Send message, get AI response
-- `GET /api/messages` - Get paginated message history
-- `GET /api/users/me` - Get user profile
-- `PUT /api/users/me/onboarding` - Complete onboarding
-- `POST /api/typing` - Update typing indicator
-- `GET /health` - Health check endpoint
+| Decision | Why | Trade-off | Production Solution |
+|----------|-----|-----------|---------------------|
+| **SQLite** | No setup, easy local dev | Poor concurrent writes, no scalability | PostgreSQL with pgBouncer |
+| **Username-based auth** | Focus on AI features first | Zero security | JWT + OAuth + rate limiting |
+| **HTTP polling** | Simple, works everywhere | Not real-time, more API calls | WebSockets for live updates |
+| **Keyword protocol matching** | Fast, predictable | Misses contextual triggers | Semantic search with embeddings |
+| **Single LLM call/msg** | Simple, low cost | No multi-turn reasoning | Function calling + tool use |
 
-Full API documentation available at http://localhost:8000/docs (when running)
+### If I Had More Time...
 
-## Testing
+**High Priority:**
+- [ ] JWT authentication + rate limiting
+- [ ] WebSocket real-time messaging
+- [ ] PostgreSQL + Redis caching
+- [ ] Function calling (book appointments, set reminders)
+- [ ] Semantic memory search with embeddings
+- [ ] Unit tests (80%+ coverage)
 
-```bash
-# Run integration tests
-python test_api.py
+**Medical Features:**
+- [ ] Symptom checker flow
+- [ ] Medication reminders + tracking
+- [ ] Lab report analysis (PDF upload)
+- [ ] Multi-language support (Hindi, Tamil, etc.)
 
-# Manual testing with curl
-curl -X POST "http://localhost:8000/api/chat?username=testuser" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "I have a fever"}'
-```
+**Advanced:**
+- [ ] Multi-modal (image support for symptoms)
+- [ ] RAG with medical knowledge base
+- [ ] Voice input/output
+- [ ] HIPAA/GDPR compliance
+- [ ] Mobile app (React Native)
 
-## Project Structure
-
-```
-disha_ai/
-├── main.py              # FastAPI app and routes
-├── services.py          # Business logic layer
-├── llm_service.py       # LLM integration
-├── models.py            # Database models
-├── schemas.py           # Pydantic schemas
-├── database.py          # DB connection
-├── config.py            # Configuration
-├── init_db.py           # Database initialization
-├── test_api.py          # Integration tests
-├── requirements.txt     # Python dependencies
-├── .env                 # Environment variables (create from .env.example)
-├── .env.example         # Environment template
-└── static/
-    └── index.html       # WhatsApp-like chat UI
-```
-
-## Troubleshooting
-
-### Database Issues
-```bash
-# Reset database
-rm disha_ai.db
-python init_db.py
-```
-
-### API Key Issues
-- Verify your API key is correct in `.env`
-- Check you have credits/quota remaining
-- Use `LLM_PROVIDER=demo` for testing without API key
-
-### Port Already in Use
-```bash
-# Change PORT in .env
-PORT=8001
-
-# Or kill existing process
-lsof -ti:8000 | xargs kill -9
-```
-
-## Features
-
-- ✅ Persistent conversation history
-- ✅ Long-term memory extraction
-- ✅ Medical protocol matching
-- ✅ Natural onboarding flow
-- ✅ WhatsApp-like UI with infinite scroll
-- ✅ Typing indicators
-- ✅ Multi-provider LLM support
-- ✅ Context window management
-- ✅ Cursor-based pagination
-
-## Tech Stack
-
-- **Backend**: FastAPI 0.115.0
-- **Database**: SQLite with SQLAlchemy 2.0.36
-- **LLM**: OpenAI GPT-4o-mini / Anthropic Claude 3.5 Sonnet
-- **Validation**: Pydantic 2.10.3
-- **Frontend**: Vanilla JavaScript + HTML/CSS
+**Time Spent:** ~10 hours (planning, backend, LLM integration, frontend, testing, docs)
 
 ---
 
